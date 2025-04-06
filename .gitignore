@@ -1,0 +1,12 @@
+# SQLite database files
+*.db
+*.sqlite
+*.sqlite3
+task_manager.db
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
