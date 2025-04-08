@@ -44,7 +44,11 @@ class Database:
                 (username, password, 0)
             )
             self.connection.commit()
-            return self.cursor.lastrowid
+
+            current_id = self.cursor.lastrowid
+            self.cursor.execute("SELECT * FROM users WHERE id = ?", (current_id,))
+            user_data = self.cursor.fetchone()
+            return user_data
         except sqlite3.IntegrityError:
             # Username already exists
             return None
@@ -55,8 +59,8 @@ class Database:
             "SELECT id FROM users WHERE username = ? AND password = ?",
             (username, password)
         )
-        user = self.cursor.fetchone()
-        return user[0] if user else None
+        user_info = self.cursor.fetchone()
+        return user_info if user_info else None
     
     def get_user_details(self, user_id):
         """Get user details by ID"""
@@ -126,6 +130,18 @@ class User:
         self.password = password
         self.streak = streak
 
+    def display_user_tasks(self, db, user_id, filter_status=None):
+        tasks = db.get_user_tasks(user_id, filter_status)
+        if tasks:
+            print("\nYour Tasks:")
+            for i, task in enumerate(tasks, 1):
+                # SQLite returns data as tuples with indices corresponding to table columns
+                # (id, user_id, title, description, priority, completion_status, due_date)
+                print(f"{i}. Title: {task[2]}, Priority: {task[4]}, Status: {task[5]}, Due: {task[6]}")
+        else:
+            print("No tasks found.")
+        return tasks
+
 
 class Task:
     def __init__(self, title, description, priority, completion_status, due_date, task_id=None, user_id=None):
@@ -137,94 +153,71 @@ class Task:
         self.completion_status = completion_status
         self.due_date = due_date
 
+    @staticmethod
+    def get_task_details():
+        title = input("Please enter the title of your task: ")
+        description = input("Please enter the description of your task: ")
+        
+        while True:
+            priority = input("Please enter the priority of your task (low/medium/high): ").lower()
+            if priority in ['low', 'medium', 'high']:
+                break
+            print("Invalid priority level. Please enter low, medium, or high.")
+        
+        while True:
+            completion_status = input("Please enter the completion status of your task:\n1. not started\n2. in progress\n3. completed\nChoice: ")
+            if completion_status == "1":
+                completion_status = "not started"
+                break
+            elif completion_status == "2":
+                completion_status = "in progress"
+                break
+            elif completion_status == "3":
+                completion_status = "completed"
+                break
+            print("Invalid option. Please choose 1, 2, or 3.")
+        
+        while True:
+            try:
+                due_date = input("Please enter the due date of your task (YYYY-MM-DD): ")
+                # Validate date format
+                datetime.datetime.strptime(due_date, '%Y-%m-%d')
+                break
+            except ValueError:
+                print("Invalid date format. Please use YYYY-MM-DD.")
+        
+        return title, description, priority, completion_status, due_date
 
 def user_access_options(db):
-    user_access_choice = input("Enter your choice (1 or 2): ")
-    if user_access_choice == "1":
-        user_id = sign_in_input(db)
-        if user_id:
-            user = db.get_user_details(user_id)
-            username = user[1]  # Index 1 corresponds to username in the database
-            print(f"Hello {username}, here are your current uncompleted tasks:")
-            display_user_tasks(db, user_id, "incomplete")
-            return user_id
+        user_access_choice = input("Enter your choice (1 or 2): ")
+        if user_access_choice == "1":
+            user_info = user_account_info_input(db, choice="sign in")
+            if user_info:
+                return user_info
+            else:
+                print("Invalid username or password. Please try again.")
+                return None
+        elif user_access_choice == "2":
+            user_info = user_account_info_input(db, choice="create account")
+            if user_info:
+                print(f"Account created successfully! Your user ID is {user_info[0]}")
+                return user_info
+            else:
+                print("Username already exists. Please try another username.")
+                return None
         else:
-            print("Invalid username or password. Please try again.")
+            print("Invalid choice. Please try again.")
             return None
-    elif user_access_choice == "2":
-        user_id = create_account_input(db)
-        if user_id:
-            print(f"Account created successfully! Your user ID is {user_id}")
-            return user_id
-        else:
-            print("Username already exists. Please try another username.")
-            return None
-    else:
-        print("Invalid choice. Please try again.")
-        return None
 
-
-def sign_in_input(db):
-    received_username = input("Please enter your username: ")
-    received_password = getpass("Please enter your password: ")
+def user_account_info_input(db, choice):
+    #This function takes the input of the user and creates a current_user object that acts as the working memory. This is to avoid more unnecessary calls to the datbase.
+    username_input = input("Please enter username: ")
+    password_input = input("Please enter password: ")
     
-    return db.authenticate_user(received_username, received_password)
-
-
-def create_account_input(db):
-    username = input("Please create a username: ")
-    password = input("Please create a password: ")
-    
-    return db.add_user(username, password)
-
-
-def display_user_tasks(db, user_id, filter_status=None):
-    tasks = db.get_user_tasks(user_id, filter_status)
-    if tasks:
-        print("\nYour Tasks:")
-        for i, task in enumerate(tasks, 1):
-            # SQLite returns data as tuples with indices corresponding to table columns
-            # (id, user_id, title, description, priority, completion_status, due_date)
-            print(f"{i}. Title: {task[2]}, Priority: {task[4]}, Status: {task[5]}, Due: {task[6]}")
-    else:
-        print("No tasks found.")
-    return tasks
-
-
-def get_task_details():
-    title = input("Please enter the title of your task: ")
-    description = input("Please enter the description of your task: ")
-    
-    while True:
-        priority = input("Please enter the priority of your task (low/medium/high): ").lower()
-        if priority in ['low', 'medium', 'high']:
-            break
-        print("Invalid priority level. Please enter low, medium, or high.")
-    
-    while True:
-        completion_status = input("Please enter the completion status of your task:\n1. not started\n2. in progress\n3. completed\nChoice: ")
-        if completion_status == "1":
-            completion_status = "not started"
-            break
-        elif completion_status == "2":
-            completion_status = "in progress"
-            break
-        elif completion_status == "3":
-            completion_status = "completed"
-            break
-        print("Invalid option. Please choose 1, 2, or 3.")
-    
-    while True:
-        try:
-            due_date = input("Please enter the due date of your task (YYYY-MM-DD): ")
-            # Validate date format
-            datetime.datetime.strptime(due_date, '%Y-%m-%d')
-            break
-        except ValueError:
-            print("Invalid date format. Please use YYYY-MM-DD.")
-    
-    return title, description, priority, completion_status, due_date
-
+    if choice == "sign in":
+        return db.authenticate_user(username_input, password_input)
+    elif choice == "create account":
+        return db.add_user(username_input, password_input)
 
 def main():
     db = Database()
@@ -234,9 +227,13 @@ def main():
     print("*****************************************")
     print("Please type '1' to sign in or type '2' to create an account")
     
-    user_id = user_access_options(db)
+    current_user_info = user_access_options(db)
+    current_user = User(username=current_user_info[1], password=current_user_info[2], user_id=current_user_info[0], streak=current_user_info[3])
+
+    print(f"Hello {current_user.username}, here are your current uncompleted tasks:")
+    current_user.display_user_tasks(db, current_user.id, "incomplete")
     
-    if user_id:
+    if current_user_info:
         main_loop = True
         while main_loop:
             print("\nWhat would you like to do?")
@@ -252,7 +249,7 @@ def main():
                 elif filter_option == "4":
                     filter_status = "completed"
                 
-                tasks = display_user_tasks(db, user_id, filter_status)
+                tasks = current_user.display_user_tasks(db, current_user.id, filter_status)
                 if tasks:
                     task_view_choice = input("Enter task number to view details (or 0 to go back): ")
                     try:
@@ -269,7 +266,7 @@ def main():
                         print("Invalid selection")
             
             elif user_option_select_choice == "2":
-                tasks = display_user_tasks(db, user_id)
+                tasks = current_user.display_user_tasks(db, current_user.id)
                 if tasks:
                     try:
                         edit_task_choice = int(input("Enter task number to edit (or 0 to go back): "))
@@ -313,16 +310,16 @@ def main():
             
             elif user_option_select_choice == "3":
                 print("\nCreate a new task:")
-                title, description, priority, completion_status, due_date = get_task_details()
+                title, description, priority, completion_status, due_date = Task.get_task_details()
                 
-                task_id = db.add_task(user_id, title, description, priority, completion_status, due_date)
+                task_id = db.add_task(current_user.id, title, description, priority, completion_status, due_date)
                 if task_id:
                     print(f"Task '{title}' created successfully!")
                 else:
                     print("Failed to create task.")
             
             elif user_option_select_choice == "4":
-                tasks = display_user_tasks(db, user_id)
+                tasks = current_user.display_user_tasks(db, current_user.id)
                 if tasks:
                     try:
                         delete_task_choice = int(input("Enter task number to delete (or 0 to go back): "))
